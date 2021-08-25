@@ -9,7 +9,11 @@ vowels_all <- formants_all %>%
          Gender = Geschlecht) %>%
   mutate(Gender = recode(Gender, `Weiblech` = "F")) %>%
   mutate(Gender = recode(Gender, `Männlech` = "M")) %>%
-  mutate(Vowel = replace(Vowel, Vowel == "aː" , "AA"))
+  mutate(participant_year_of_birth = as.integer(participant_year_of_birth)) %>%
+  mutate(Speaker = as.factor(Speaker)) %>%
+  mutate(Word = as.factor(Word)) %>%
+  mutate(Vowel = as.factor(Vowel))
+
 
 #update the Gender variable to allow for conrast coding
 vowels_all$Gender <- as.ordered(vowels_all$Gender)
@@ -19,9 +23,7 @@ vowels_all <- vowels_all %>%
   arrange(as.character(Speaker))
 
 vowels_all <- vowels_all %>%
-  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) %>%
-  # mol just ee Vokal
-  filter(Vowel == "AA")
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0)
 
 
 library(mgcv)
@@ -67,7 +69,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
                   s(participant_year_of_birth, k=10, bs="ad", by=Gender) +
                   s(participant_year_of_birth, k=10, bs="ad") +
                   Gender +
-                  s(Speech_rate) +
+                  #s(Speech_rate) +
                   s(Speaker, bs="re") +
                   s(Word, bs="re"),
                 data=vowels_all %>% filter(Vowel == i),
@@ -80,7 +82,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
   assign(paste0("gam_F2_", i), gam.F2)
   
   #save the model summary
-  saveRDS(gam.F2, file = paste0("/Users/james/Documents/GitHub/model_summaries/gam_F2_", i, ".rds"))
+  saveRDS(gam.F2, file = paste0("gam_F2_", i, ".rds"))
   
   #rename the variables so it clear which one has F1/F2, i.e. this will give F1_FLEECE, F2_FLEECE
   names(gam.F1.intercepts.tmp) <- paste0("F1_", i)
@@ -94,3 +96,4 @@ for (i in levels(factor(vowels_all$Vowel))) {
 
 #save the intercepts as a .csv file
 write.csv(gam_intercepts.tmp, "Data/gam_intercepts_tmp_new.csv", row.names = FALSE)
+
