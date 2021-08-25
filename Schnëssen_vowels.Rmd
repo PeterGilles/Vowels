@@ -463,7 +463,7 @@ formants_all <- formants_all %>%
     ungroup() %>%
     # keep only speakers with more than 40 (?) segments  
     group_by(id) %>%
-    filter(n() >= 30) %>%
+    filter(n() >= 40) %>%
     ungroup()
     
 #remove the previous summary data frames
@@ -708,7 +708,6 @@ vowels_all <- formants_all %>%
   mutate(Word = as.factor(Word)) %>%
   mutate(Vowel = as.factor(Vowel))
 
-
 #update the Gender variable to allow for conrast coding
 vowels_all$Gender <- as.ordered(vowels_all$Gender)
 contrasts(vowels_all$Gender) <- "contr.treatment"
@@ -717,7 +716,7 @@ vowels_all <- vowels_all %>%
   arrange(as.character(Speaker))
 
 vowels_all <- vowels_all %>%
-  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0)
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) 
 
 ```
 
@@ -792,7 +791,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
 }
 
 #save the intercepts as a .csv file
-write.csv(gam_intercepts.tmp, "Data/gam_intercepts_tmp_new.csv", row.names = FALSE)
+write.csv(gam_intercepts.tmp, "gam_intercepts_tmp_new.csv", row.names = FALSE)
 ```
 
 

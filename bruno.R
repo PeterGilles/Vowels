@@ -14,7 +14,6 @@ vowels_all <- formants_all %>%
   mutate(Word = as.factor(Word)) %>%
   mutate(Vowel = as.factor(Vowel))
 
-
 #update the Gender variable to allow for conrast coding
 vowels_all$Gender <- as.ordered(vowels_all$Gender)
 contrasts(vowels_all$Gender) <- "contr.treatment"
@@ -23,7 +22,7 @@ vowels_all <- vowels_all %>%
   arrange(as.character(Speaker))
 
 vowels_all <- vowels_all %>%
-  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0)
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) 
 
 
 library(mgcv)
@@ -36,6 +35,7 @@ gam_intercepts.tmp <- vowels_all %>%
 #loop through the vowels
 cat(paste0("Start time:\n", format(Sys.time(), "%d %B %Y, %r\n")))
 
+#vowels_all <- vowels_nz
 for (i in levels(factor(vowels_all$Vowel))) {
   
   #F1 modelling
@@ -49,7 +49,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
                   s(Speaker, bs="re") +
                   s(Word, bs="re"),
                 data=vowels_all %>% filter(Vowel == i),
-                discrete=T, nthreads=1)
+                discrete=T, nthreads=2)
   
   #extract the speaker intercepts from the model and store them in a temporary data frame
   gam.F1.intercepts.tmp <- as.data.frame(get_random(gam.F1)$`s(Speaker)`)
@@ -58,7 +58,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
   assign(paste0("gam_F1_", i), gam.F1)
   
   #save the model summary
-  saveRDS(gam.F1, file = paste0("/Users/james/Documents/GitHub/model_summaries/gam_F1_", i, ".rds"))
+  saveRDS(gam.F1, file = paste0("gam_F1_", i, ".rds"))
   
   cat(paste0("F1_", i, ": ", format(Sys.time(), "%d %B %Y, %r"), " ✅\n")) #print the vowel the loop is up to for F1, as well as the start time for the model
   
@@ -95,5 +95,5 @@ for (i in levels(factor(vowels_all$Vowel))) {
 }
 
 #save the intercepts as a .csv file
-write.csv(gam_intercepts.tmp, "Data/gam_intercepts_tmp_new.csv", row.names = FALSE)
+write.csv(gam_intercepts.tmp, "gam_intercepts_tmp_new.csv", row.names = FALSE)
 
