@@ -469,6 +469,9 @@ formants_all <- formants_all %>%
 #remove the previous summary data frames
 rm(summary_vowels_all, summary_mean_of_means)
 
+# save formants_all
+saveRDS(formants_all, "formants_all.RDS")
+
 # which words per vowel
 formants_all %>% 
   filter(labels == "ɑ") %>% 
@@ -692,19 +695,26 @@ summary(regression)
 ## GAMMs
 https://nzilbb.github.io/Covariation_monophthongs_NZE/Covariation_monophthongs_analysis.html#GAMM_modelling
 ```{r}
-vowels_all <- formants_all
-#update the Gender variable to allow for conrast coding
-vowels_all$Gender <- as.ordered(vowels_all$Geschlecht)
-contrasts(vowels_all$Gender) <- "contr.treatment"
-
-vowels_all <- vowels_all %>%
-  arrange(as.character(id))
-
-vowels_all <- vowels_all %>%
+vowels_all <- formants_all %>%
   mutate(participant_year_of_birth = recode(Alter, `≤ 24` = 2003, `25 bis 34` = 1993, `35 bis 44` = 1983, `45 bis 54` = 1973, `55 bis 64` = 1963, `65+` = 1953, `55+` = 1963)) %>%
   rename(Vowel = labels, F1_lobanov_2.0 = F1_lob2, F2_lobanov_2.0 = F2_lob2,
          Speaker =id,
-         Word = ORT)
+         Word = ORT,
+         Gender = Geschlecht) %>%
+  mutate(Gender = recode(Gender, `Weiblech` = "F")) %>%
+  mutate(Gender = recode(Gender, `Männlech` = "M")) %>%
+  mutate(Vowel = replace(Vowel, Vowel == "aː" , "AA"))
+
+#update the Gender variable to allow for conrast coding
+vowels_all$Gender <- as.ordered(vowels_all$Gender)
+contrasts(vowels_all$Gender) <- "contr.treatment"
+
+vowels_all <- vowels_all %>%
+  arrange(as.character(Speaker))
+
+vowels_all <- vowels_all %>%
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) %>%
+  filter(Vowel == "AA")
 ```
 
 ```{r}
@@ -740,7 +750,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
   assign(paste0("gam_F1_", i), gam.F1)
   
   #save the model summary
-  saveRDS(gam.F1, file = paste0("/Users/james/Documents/GitHub/model_summaries/gam_F1_", i, ".rds"))
+  saveRDS(gam.F1, file = paste0("gam_F1_", i, ".rds"))
   
   cat(paste0("F1_", i, ": ", format(Sys.time(), "%d %B %Y, %r"), " ✅\n")) #print the vowel the loop is up to for F1, as well as the start time for the model
   

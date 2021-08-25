@@ -1,19 +1,27 @@
 library(tidyverse)
 formants_all <- readRDS("formants_all.RDS")
 
-vowels_all <- formants_all
-#update the Gender variable to allow for conrast coding
-vowels_all$Gender <- as.ordered(vowels_all$Geschlecht)
-contrasts(vowels_all$Gender) <- "contr.treatment"
-
-vowels_all <- vowels_all %>%
-  arrange(as.character(id))
-
-vowels_all <- vowels_all %>%
+vowels_all <- formants_all %>%
   mutate(participant_year_of_birth = recode(Alter, `≤ 24` = 2003, `25 bis 34` = 1993, `35 bis 44` = 1983, `45 bis 54` = 1973, `55 bis 64` = 1963, `65+` = 1953, `55+` = 1963)) %>%
   rename(Vowel = labels, F1_lobanov_2.0 = F1_lob2, F2_lobanov_2.0 = F2_lob2,
          Speaker =id,
-         Word = ORT)
+         Word = ORT,
+         Gender = Geschlecht) %>%
+  mutate(Gender = recode(Gender, `Weiblech` = "F")) %>%
+  mutate(Gender = recode(Gender, `Männlech` = "M")) %>%
+  mutate(Vowel = replace(Vowel, Vowel == "aː" , "AA"))
+
+#update the Gender variable to allow for conrast coding
+vowels_all$Gender <- as.ordered(vowels_all$Gender)
+contrasts(vowels_all$Gender) <- "contr.treatment"
+
+vowels_all <- vowels_all %>%
+  arrange(as.character(Speaker))
+
+vowels_all <- vowels_all %>%
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) %>%
+  # mol just ee Vokal
+  filter(Vowel == "AA")
 
 
 library(mgcv)
@@ -39,7 +47,7 @@ for (i in levels(factor(vowels_all$Vowel))) {
                   s(Speaker, bs="re") +
                   s(Word, bs="re"),
                 data=vowels_all %>% filter(Vowel == i),
-                discrete=T, nthreads=2)
+                discrete=T, nthreads=1)
   
   #extract the speaker intercepts from the model and store them in a temporary data frame
   gam.F1.intercepts.tmp <- as.data.frame(get_random(gam.F1)$`s(Speaker)`)
