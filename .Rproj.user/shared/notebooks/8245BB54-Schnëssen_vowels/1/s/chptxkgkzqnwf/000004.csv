@@ -1,0 +1,51 @@
+"0","# normalisation
+formants_all <- formants_all %>%
+    # create id for speaker
+    mutate(id = word(bundle, 3, sep =""_"")) %>%
+    # join Sozialdaten
+    inner_join(sozialdaten) %>%
+    # remove outliers
+    group_by(Alter, Geschlecht, labels) %>%
+    filter(!find_outliers(T1, T2, keep = 0.95)) %>%
+    ungroup() %>%
+    # normalise with Lobanov 2.0 (https://nzilbb.github.io/Covariation_monophthongs_NZE/Covariation_monophthongs_analysis.html#Normalisation)
+    #add in the data
+    left_join(., summary_mean_of_means) %>%
+    left_join(., summary_vowels_all[, c(""id"", ""labels"", ""token_count_vowel"")]) %>%
+    #normalise with Lobanov 2.0
+    mutate(F1_lob2 = (T1 - mean_of_means_F1)/sd_of_means_F1,
+           F2_lob2 = (T2 - mean_of_means_F2)/sd_of_means_F2) %>%
+    #remove the variables that are not required
+    dplyr::select(-(mean_of_means_F1:sd_of_means_F2)) %>%
+    group_by(id) %>%
+    # normalise with Lobanov per id, i.e. on the basis of the individual speaker
+    mutate(F1_lob = normLobanov(T1), F2_lob = normLobanov(T2), F3_lob = normLobanov(T3)) %>%
+    # normalise with deltaF (Johnson 2020)
+    norm_deltaF(T1, T2, T3, T4) %>%
+    rename(F1_deltaF = T1_deltaF, F2_deltaF = T2_deltaF, F3_deltaF = T3_deltaF, F4_deltaF = T4_deltaF) %>%
+    ungroup() %>%
+    # keep only speakers with more than 40 (?) segments  
+    group_by(id) %>%
+    filter(n() >= 30) %>%
+    ungroup()
+"
+"1","Joining, by = ""id""
+"
+"2","With only 1 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 2 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 5 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 3 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 2 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 1 tokens, there are not enough tokens to determine outliers.
+"
+"2","With only 1 tokens, there are not enough tokens to determine outliers.
+"
+"1","Joining, by = ""id""
+"
+"1","Joining, by = c(""labels"", ""id"")
+"

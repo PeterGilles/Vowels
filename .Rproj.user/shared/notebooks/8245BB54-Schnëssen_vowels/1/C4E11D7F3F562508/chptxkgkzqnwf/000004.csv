@@ -1,0 +1,6 @@
+"0","# save formants_all
+saveRDS(""formants_all.RDS"")
+"
+"2","Fehler in saveRDS(""formants_all.RDS"") : 
+  'file' muss nicht-leere Zeichenkette sein
+"

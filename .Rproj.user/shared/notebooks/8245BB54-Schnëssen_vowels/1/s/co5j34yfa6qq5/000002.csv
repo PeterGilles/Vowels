@@ -1,0 +1,66 @@
+"0","for (i in levels(factor(vowels_all$Vowel))) {
+  
+  #F1 modelling
+  
+  #run the mixed-effects model on the vowel, i.e. if i = FLEECE this will model F1 for FLEECE
+  gam.F1 <- bam(F1_lobanov_2.0 ~
+                  s(participant_year_of_birth, k=10, bs=""ad"", by=Gender) +
+                  s(participant_year_of_birth, k=10, bs=""ad"") +
+                  Gender +
+                  #s(Speech_rate) +
+                  s(Speaker, bs=""re"") +
+                  s(Word, bs=""re""),
+                data=vowels_all %>% filter(Vowel == i),
+                discrete=T, nthreads=2)
+  
+  #extract the speaker intercepts from the model and store them in a temporary data frame
+  gam.F1.intercepts.tmp <- as.data.frame(get_random(gam.F1)$`s(Speaker)`)
+  
+  #assign the model to an object
+  assign(paste0(""gam_F1_"", i), gam.F1)
+  
+  #save the model summary
+  saveRDS(gam.F1, file = paste0(""/Users/james/Documents/GitHub/model_summaries/gam_F1_"", i, "".rds""))
+  
+  cat(paste0(""F1_"", i, "": "", format(Sys.time(), ""%d %B %Y, %r""), "" ✅\n"")) #print the vowel the loop is up to for F1, as well as the start time for the model
+  
+  #F2 modelling
+  
+  #run the mixed-effects model on the vowel, i.e. if i = FLEECE this will model F2 for FLEECE
+  gam.F2 <- bam(F2_lobanov_2.0 ~
+                  s(participant_year_of_birth, k=10, bs=""ad"", by=Gender) +
+                  s(participant_year_of_birth, k=10, bs=""ad"") +
+                  Gender +
+                  s(Speech_rate) +
+                  s(Speaker, bs=""re"") +
+                  s(Word, bs=""re""),
+                data=vowels_all %>% filter(Vowel == i),
+                discrete=T, nthreads=2)
+  
+  #extract the speaker intercepts again, storing them in a separate data frame
+  gam.F2.intercepts.tmp <- as.data.frame(get_random(gam.F2)$`s(Speaker)`)
+  
+  #assign the model to an object
+  assign(paste0(""gam_F2_"", i), gam.F2)
+  
+  #save the model summary
+  saveRDS(gam.F2, file = paste0(""/Users/james/Documents/GitHub/model_summaries/gam_F2_"", i, "".rds""))
+
+  #rename the variables so it clear which one has F1/F2, i.e. this will give F1_FLEECE, F2_FLEECE
+  names(gam.F1.intercepts.tmp) <- paste0(""F1_"", i)
+  names(gam.F2.intercepts.tmp) <- paste0(""F2_"", i)
+  
+  #combine the intercepts for F1 and F2 and store them in the intercepts.tmp_stress data frame
+  gam_intercepts.tmp <- cbind(gam_intercepts.tmp, gam.F1.intercepts.tmp, gam.F2.intercepts.tmp)
+  
+  cat(paste0(""F2_"", i, "": "", format(Sys.time(), ""%d %B %Y, %r""), "" ✅\n"")) #print the vowel the loop is up to for F2 , as well as the start time for the model
+}
+"
+"2","Warnung in bam(F1_lobanov_2.0 ~ s(participant_year_of_birth, k = 10, bs = ""ad"", "
+"2","
+ "
+"2"," openMP nicht verfügbar: nur single thread Berechnungen
+"
+"2","Fehler in dat[, i] - xl[1] : 
+  nicht-numerisches Argument für binären Operator
+"

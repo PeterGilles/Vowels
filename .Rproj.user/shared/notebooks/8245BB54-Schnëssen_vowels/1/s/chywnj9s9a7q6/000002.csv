@@ -1,0 +1,15 @@
+"0","db <- load_emuDB(""/Users/peter.gilles/Documents/_Daten/emuDBs/schnëssen_emuDB"")
+"
+"1","INFO: Checking if cache needs update for"
+"1"," "
+"1","65"
+"1"," "
+"1","sessions "
+"1","and"
+"1"," "
+"1","63242"
+"1"," "
+"1","bundles ...
+"
+"2","Fehler: database is locked
+"

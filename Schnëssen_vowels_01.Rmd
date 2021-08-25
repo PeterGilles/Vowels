@@ -1,0 +1,722 @@
+---
+title: "Schnëssen vowels"
+author: "Peter Gilles"
+date: "21 4 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# certain requeries do not run with version 2.2.0
+#require(devtools)
+#install_version("emuR", version = "2.1.0", repos = "http://cran.us.r-project.org")
+library(emuR)
+library(tidyverse)
+library(tidymodels)
+library(joeyr)
+library(tictoc)
+```
+
+## References
+[https://guilhermegarcia.github.io/vowels.html]
+[https://marissabarlaz.github.io/portfolio/vowelnormalization/#speaker-intrinsicvowel-extrinsicformant-intrinsic]
+[https://www.york.ac.uk/language/ypl/ypl2/11/YPL2-11-01-Flynn.pdf]
+[https://rucforsk.ruc.dk/ws/portalfiles/portal/33209715/Website_FabriciusKendallWatt_NormalizationPlotting.pdf]
+[https://drammock.github.io/phonR/]
+[https://joeystanley.com/blog/making-vowel-plots-in-r-part-1]
+[https://github.com/drammock/diphthong-plotting-tutorial/blob/master/diphthong-plotting-R.ipynb]
+[https://www-users.york.ac.uk/~gb1055/sociophonetics_workshop/index.html]
+[https://www.bas.uni-muenchen.de/~jmh/lehre/Rdf/EMU-SDMS/lesson8/08_Analysis-of-Formant-data2.html]
+(Vowel Space)[https://rstudio-pubs-static.s3.amazonaws.com/348434_89d7208104214419b406a6f15d0d8bf3.html]
+[https://icphs2019.org/icphs2019-fullpapers/pdf/full-paper_835.pdf]
+[https://www.languagebits.com/files/euclidean-distance-diphthongs-in-r-code.html]
+
+
+
+## Load EMU DB
+
+```{r}
+db <- load_emuDB("/Users/peter.gilles/Documents/_Daten/emuDBs/schnëssen_emuDB")
+summary(db)
+
+list_ssffTrackDefinitions(db)
+list_levelDefinitions(db)
+list_linkDefinitions(db)
+```
+
+## Add label groups
+```{r}
+# # add long vowels label group
+# add_attrDefLabelGroup(db,
+#                       levelName = "MAU",
+#                       attributeDefinitionName = "MAU",
+#                       labelGroupName = "longVowels",
+#                       labelGroupValues = c("iː", "eː", "ɛː", "aː", "oː", "uː"))
+# 
+# # add short vowels label group
+# add_attrDefLabelGroup(db,
+#                       levelName = "MAU",
+#                       attributeDefinitionName = "MAU",
+#                       labelGroupName = "shortVowels",
+#                       labelGroupValues = c("i", "e", "æ", "ɑ", "ɔ", "u"))
+# 
+# # add monophthong label group
+# add_attrDefLabelGroup(db,
+#                       levelName = "MAU",
+#                       attributeDefinitionName = "MAU",
+#                       labelGroupName = "monophthongs",
+#                       labelGroupValues = c("iː", "eː", "ɛː", "aː", "oː", "uː", "i", "e", "æ", "ɑ", "ɔ", "u"))
+# 
+# # add diphthong label group
+# add_attrDefLabelGroup(db,
+#                       levelName = "MAU",
+#                       attributeDefinitionName = "MAU",
+#                       labelGroupName = "diphthongs",
+#                       labelGroupValues = c("iə", "əʊ", "uə", "ɜɪ", "ɑʊ", "æːɪ", "ɑɪ", "æːʊ"))
+# 
+# add_labelGroup(db,
+#                name = "monophthongs",
+#                values = c("iː", "eː", "ɛː", "aː", "oː", "uː", "i", "e", "æ", "ɑ", "ɔ", "u"))
+# 
+# add_labelGroup(db,
+#                name = "diphthongs",
+#                values = c("iə", "əʊ", "uə", "ɜɪ", "ɑʊ", "æːɪ", "ɑɪ", "æːʊ"))
+# 
+# add_labelGroup(db,
+#                name = "shortVowels",
+#                values = c("i", "e", "æ", "ɑ", "ɔ", "u"))
+# 
+# add_labelGroup(db,
+#                name = "longVowels",
+#                values = c("iː", "eː", "ɛː", "aː", "oː", "uː"))
+# 
+# 
+# # list current label groups
+# list_attrDefLabelGroups(db,
+#                         levelName = "MAU",
+#                         attributeDefinitionName = "MAU")
+# # 
+# remove_attrDefLabelGroup(db,
+#                           levelName = "MAU",
+#                           attributeDefinitionName = "MAU",
+#                          labelGroupName = "diphthongs")
+# 
+# # list label groups
+# list_labelGroups(db)
+# 
+# # remove
+# remove_labelGroup(db,
+#                   name ="monophthongs")
+```
+
+## Load Sozialdaten
+
+```{r}
+sozialdaten <- rio::import("sozialdaten.csv") %>%
+  rename(id = ID) %>%
+  #filter(!Muttersprache == "Neen") %>%
+  select(id, Alter, Geschlecht, Dialektgebiet) %>%
+  mutate(id  = as.character(id)) %>%
+  mutate(Alter = as.factor(Alter)) %>%
+  mutate(Geschlecht = as.factor(Geschlecht)) %>%
+  mutate(Dialektgebiet = as.factor(Dialektgebiet)) %>%
+  mutate(ceiling = ifelse(Geschlecht == "Weiblech", 5500.0, 5000.0))
+```
+
+
+## Create formant tracks and pitch tracks by Praat (if necessary)
+
+```{r}
+# insert formant & pitch tracks, coming from praat
+# see https://ips-lmu.github.io/The-EMU-SDMS-Manual/app-chap-wrassp.html#to-formant-burg-to-ssff-files
+#source("https://raw.githubusercontent.com/IPS-LMU/The-EMU-SDMS-Manual/master/R/praat2AsspDataObj.R")
+source("praat2AsspDataObj.R")
+
+# list all .wav files in the emuDB
+paths2wavFiles = list.files("/Users/peter.gilles/Documents/_Daten/emuDBs/23_Fligere_emuDB", pattern = "*.wav$", recursive = TRUE, full.names = TRUE)
+
+# loop through files
+files <- as.data.frame(paths2wavFiles) %>%
+  mutate(id = word(word(paths2wavFiles, 9, sep ="/"), 3, sep = "_"))
+
+filenames.meta <<- right_join(sozialdaten, files)
+
+## formants
+print("Now creating formant tracks...")
+
+# function to submit more parameters to Praat than foreseen in emuR
+formants <- function(file, ceiling) {
+  # when 'ceiling' is eidel, dann default-Wert nehmen
+  if (is.na(ceiling)) {
+    ceiling <- 5500.0
+  }
+  ado = praat2AsspDataObj(file, object = "formant", ceiling = ceiling)
+  newPath = paste0(tools::file_path_sans_ext(file), '.praatFms')
+  #print(paste0(fp, ' -> ', newPath)) # uncomment for simple log
+  wrassp::write.AsspDataObj(ado, file = newPath)
+}
+#test function
+#formants("/Users/peter.gilles/Documents/_Daten/emuDBs/23_Fligere_emuDB/0000_ses/pg_23_1000_63v02_bndl/pg_23_1000_63v02.wav", 5000.0)
+
+# run function with two arguments with map2
+map2(filenames.meta$paths2wavFiles, filenames.meta$ceiling, formants)
+
+# # old from emuR doc
+# for(fp in filenames.meta){
+#   head(print(fp))
+#   ado = praat2AsspDataObj(fp$paths2wavFiles, object = "formant", ceiling = fp$ceiling)
+#   newPath = paste0(tools::file_path_sans_ext(fp), '.praatFms')
+#   #print(paste0(fp, ' -> ', newPath)) # uncomment for simple log
+#   wrassp::write.AsspDataObj(ado, file = newPath)
+# }
+
+## pitch
+print("Now creating pitch tracks...")
+for(fp in paths2wavFiles){
+  ado = praat2AsspDataObj(fp,
+                          object = "pitch",
+                          time_step = 0.00625,
+                          pitch_floor = 60,
+                          smooth = TRUE)
+  newPath = paste0(tools::file_path_sans_ext(fp), '.praatF0')
+  # print(paste0(fp, ' -> ', newPath)) # uncomment for simple log
+  wrassp::write.AsspDataObj(ado, file = newPath)
+}
+
+# add SSFF track definition
+add_ssffTrackDefinition(db,
+                        name = "praatFms",
+                        columnName = "fm",
+                        fileExtension = "praatFms")
+
+add_ssffTrackDefinition(db,
+                        name = "praatF0",
+                        columnName = "f0",
+                        fileExtension = "praatF0")
+```
+
+
+## Get all KAN items
+
+```{r}
+# all words: KAN & ORT
+sl <- query(db, query = "[ KAN =~ .*]", verbose=T) 
+# attach a new column with the ORT labels using requery
+sl2 <- sl %>%
+  mutate(ORT = requery_hier(db, seglist = sl, level = "ORT")$labels)
+
+# df with types for labels (=KAN) and ORT with frequency
+all_KAN <- sl2 %>%
+  count(labels, ORT, sort = T)
+all_KAN
+```
+
+## Get all MAU items
+
+```{r}
+# get frequencies of all segments: MAU
+sl <- query(db, "[ MAU =~ .*]")
+sl2 <- sl %>%
+  mutate(KAN = requery_hier(db, seglist = sl, level = "KAN")$labels) %>%
+  mutate(ORT= requery_hier(db, seglist = sl, level = "ORT")$labels)
+all_MAU <- sl2 %>%
+  dplyr::select(labels, KAN, ORT) %>%
+  count(labels, KAN, ORT, sort = T)
+all_MAU
+```
+
+## Function to find and change the label for stressed vowels
+The vowel will the have a leading ', e.g. 'ə
+
+```{r}
+# function to find stressed vowels
+get_stressed_vowels <- function(vowel) {
+  # al KAN segments containing stressed vowels
+  query_stressed <- paste0("[ KAN =~ '.*ˈ .*", vowel, " .*' ]")
+  sl_kan <- query(db, query = query_stressed)
+  sl_kan <- sl_kan %>%
+    distinct(labels)
+  # create a regex string from the vector, i.e. word|word|...
+  sl_kan <- as.vector(sl_kan$labels) %>%
+    paste(collapse = "|")
+  
+  # all MAU vowels only for these KAN words
+  query_stressed <- paste0("[ #MAU == '", vowel, "' ^ KAN =~ '(", sl_kan, ")' ]")
+  sl_mau <- query(db, query = query_stressed) 
+  # change labels for stressed vowel, add ˈ
+  toChange <- sl_mau %>% 
+    select(session, bundle, level, start_item_seq_idx, attribute, labels) %>% 
+    mutate(labels = paste0("ˈ", vowel))
+  # update db
+  update_itemsInLevel(db, toChange, verbose = TRUE)
+  # attach KAN and ORT columns
+  #sl_mau %>%
+  #  mutate(KAN = requery_hier(db, seglist = sl_mau, level = "KAN", collapse = TRUE)$labels) %>%
+  #  mutate(ORT = requery_hier(db, seglist = sl_mau, level = "ORT", collapse = TRUE)$labels)
+}
+
+# has to be done one vowel-by-vowel basis
+stressed_vowels <- get_stressed_vowels(vowel = "ə")
+```
+
+## Getting the vowel data
+
+```{r include=FALSE}
+# construct search string
+#query <- "[MAU == ˈə ^ ORT =~ '(dënschdeg|dënschden|dënsdeg|dënsden|gëschter|schëlder|schëlter|ëmmer|gëtt|schwëster|zëmmer|mëllech|nët|geschwënn)' ]"
+
+#query <- "MAU =~ '(i|iː|e|eː|ɛː|æ|aː|ɑ)'"
+query <- "MAU == shortVowels"
+query <- "MAU == longVowels"
+query <- "MAU == diphthongs"
+query <- "MAU =~ '(æ|aː|ɑ)'"
+# may take long
+vowel <- query(db, query = query) 
+
+# to bind results for unstressed schwa
+# temp <- vowel
+# vowel <- query(db, query = "[MAU == ə ]") 
+# vowel <- bind_rows(vowel, temp)
+
+vowel2 <- vowel %>%
+  mutate(next_sound = requery_seq(db, vowel, offset = 1, ignoreOutOfBounds = TRUE)$labels) %>%
+  mutate(previous_sound = requery_seq(db, vowel, offset = -1, ignoreOutOfBounds = TRUE)$labels)
+
+vowel3 <- vowel2 %>%
+  mutate(ORT = requery_hier(db, vowel, level = "ORT")$labels) %>%
+  # filter too short and too long vowels
+  # for short vowels
+  #filter(end - start <= 150 & end - start >= 40) %>%
+  # for long vowels - CHECK!!
+  filter(end - start <= 400 & end - start >= 60) %>%
+  # filter problematic words with now formant values
+  filter(ORT != "europa") %>%
+  filter(ORT != "ugedo")
+
+# # column for stopwords
+stopwords <- rio::import("stopwords.txt")
+vowel4 <- vowel3 %>%
+  mutate(stopword = if_else(ORT %in% stopwords$stopword, "stopword", "content word")) %>%
+  # filter out stopwords
+  filter(stopword != "stopword")
+
+# get formant tracks
+td_vowels = get_trackdata(db, vowel4,
+                          ssffTrackName = "praatFms", 
+                          # onTheFlyFunctionName = "forest",
+                          # onTheFlyParams = list(gender=c("m")),
+                          verbose = TRUE)
+
+# normalise the length
+td_vowels_norm = normalize_length(td_vowels)
+# Achtung: wenn colNames verwendet wird, dann werden zusätzliche Metadatenspalten einfach gelöscht
+# die Warnung: "Found additional column ..." kann ignoriert werden
+# td_vowels_norm = normalize_length(td_vowels, colNames = c("T1", "T2"))
+
+# save intermediate dfs / segment lists
+#saveRDS(td_vowels_norm, "td_vowels_norm_shortVowels.RDS")
+#saveRDS(td_vowels_norm, "td_vowels_norm_longVowels.RDS")
+#saveRDS(td_vowels_norm, "td_vowels_norm_diphthongs.RDS")
+#td_vowels_norm <- bind_rows(td_vowels_norm_longVowels, td_vowels_norm_shortVowels, td_vowels_norm_diphthongs)
+#saveRDS(td_vowels_norm, "td_vowels_norm.RDS")
+
+
+# function to get formants for specific point in time ('times_norm')
+get_formants <- function(data, time, segments){
+  sozialdaten <- rio::import("sozialdaten.csv") %>%
+  rename(id = ID) %>%
+  filter(!Muttersprache == "Neen") %>%
+  filter(!Geschlecht == "Aner") %>%
+  select(id, Alter, Geschlecht, Dialektgebiet) %>%
+  mutate(id  = as.character(id)) %>%
+  mutate(Alter = as.factor(Alter)) %>%
+  mutate(Geschlecht = as.factor(Geschlecht)) %>%
+  mutate(Dialektgebiet = as.factor(Dialektgebiet))
+  
+  data %>% 
+    # filter labels
+    dplyr::filter(str_detect(labels, segments)) %>%
+    # select a point somewhere in the middle for monophthongs
+    dplyr::filter(times_norm == time) %>%
+    # filter implausible/wrong formant values
+    #filter(T1 <= 400 & T1 >= 1200) %>%
+    #filter(T2 >= 3000) %>%
+    # duration
+    mutate(duration = round(end - start)) %>%
+    # create id for speaker
+    mutate(id = word(bundle, 3, sep ="_")) %>%
+    # join Sozialdaten
+    inner_join(sozialdaten) %>%
+    # remove outliers
+    # group_by(Geschlecht, Alter, labels) %>%
+    # filter(!find_outliers(T1, T2, keep = 0.95)) %>%
+    # ungroup() %>%
+    # # normalise with Lobanov per id
+    #group_by(id) %>%
+    #mutate(F1Lobanov = normLobanov(T1), F2Lobanov = normLobanov(T2)) %>%
+    #ungroup() %>%
+    group_by(labels, id, Alter, Geschlecht, Dialektgebiet) %>%
+    # calculate mean for T1, T2, T3 and duration
+    summarise_at(vars(T1:T3, duration), mean) %>%
+    ungroup() 
+}
+
+formants_mid_monophthongs <- get_formants(data = td_vowels_norm, 
+                                          time = 0.5,
+                                          segments = "^æ$|aː\\b|ɑ\\b")
+formants_onset_diphthongs <- get_formants(data = td_vowels_norm, 
+                                          time = 0.1,
+                                          segments = "æːɪ|æːʊ|ɑɪ|æːʊ")
+
+vowel_midpoints_speaker <- bind_rows(formants_mid_monophthongs, formants_onset_diphthongs)
+```
+
+## Attach Sozialdaten
+
+```{r}
+sozialdaten <- rio::import("sozialdaten.csv") %>%
+  rename(id = ID) %>%
+  filter(!Muttersprache == "Neen") %>%
+  filter(!Geschlecht == "Aner") %>%
+  select(id, Alter, Geschlecht, Dialektgebiet) %>%
+  mutate(id  = as.character(id)) %>%
+  mutate(Alter = as.factor(Alter)) %>%
+  mutate(Geschlecht = as.factor(Geschlecht)) %>%
+  mutate(Dialektgebiet = as.factor(Dialektgebiet))
+  
+# bind with formant data
+# whole df for formant tracks
+td_vowels_norm_sozialdaten <- left_join(td_vowels_norm %>%
+                              mutate(id = word(bundle, 3, sep ="_")), sozialdaten)  %>%
+  group_by(id) %>% 
+  mutate(F1Lobanov = normLobanov(T1), F2Lobanov = normLobanov(T2)) %>%
+  ungroup()
+
+# only midpoints
+vowel_midpoints <- inner_join(vowel_midpoints, sozialdaten) 
+
+# midpoints per label / speaker
+vowel_midpoints_speaker <- inner_join(vowel_midpoints_speaker, sozialdaten) %>%
+  # remove outliers
+  filter(stopword == "content word") %>%
+  group_by(Geschlecht, Alter, labels) %>%
+  filter(!find_outliers(T1, T2, keep = 0.70))
+
+# # formant normalisation
+# library(vowels)
+# vowel_midpoints_lobanov <- vowel_midpoints %>%
+#   mutate(context = "") %>%
+#   mutate(`gl F1` = "") %>%
+#   mutate(`gl F2` = "") %>%
+#   mutate(`gl F3` = "") %>%
+#   select(speaker = id, `vowel/frame` = labels, 
+#          context, F1 = T1, F2 = T2, F3 = T3,
+#          `gl F1`, `gl F2`, `gl F3`)
+# 
+# library(rio)
+# export(vowel_midpoints_lobanov, file = "vowel_midpoints_lobanov.tsv")
+
+# attach F1, F2 values with Lobanov normalisation
+library(phonR)
+vowel_midpoints <- vowel_midpoints %>%
+  group_by(id) %>% 
+  mutate(F1Lobanov = normLobanov(T1), F2Lobanov = normLobanov(T2))
+
+saveRDS(td_vowels_norm, "td_vowels_norm.RDS")
+saveRDS(vowel_midpoints, "vowel_midpoint.RDS")
+saveRDS(vowel_midpoints_speaker, "vowel_midpoint_speaker.RDS")
+```
+
+## Use saved vowel data
+```{r}
+td_vowels_norm <- readRDS("td_vowels_norm.RDS")
+vowel_midpoints_speaker <- readRDS("vowel_midpoints_speaker.RDS")
+```
+
+## Botzen
+
+Define some margins for outliers, implausible segment durations etc. and filter only these for manual correction. Then re-run.
+```{r}
+botzen <- vowel2 %>%
+  filter(end - start >= 150)
+
+serve(db, seglist = botzen)
+```
+
+## Plotting the formant trajectories
+
+```{r}
+td_vowels_norm %>%
+  # filter time range
+  filter(times_norm >= 0.10 & times_norm <= 0.8) %>%
+  # filter plausible formant values
+  # filter(T1 <= 8 & T1 >= 4) %>%
+  # filter(T2 >= 9) %>%
+  ggplot(aes(x = times_norm)) +
+  geom_smooth(aes(y = T1), method = "gam", se = FALSE, colour = "#A7473A") +
+  geom_smooth(aes(y = T2), method = "gam", se = FALSE, colour = "#4B5F6C") +
+  geom_smooth(aes(y = T3), method = "gam", se = FALSE, colour = "#B09B37") +
+  facet_wrap(~ labels) +
+  ylab("")
+```
+
+
+## Plotting the mean of stressed and unstressed schwas per speaker
+```{r}
+# remove outliers
+# without_outliers <- vowel_midpoints %>%
+#   #  filter(!stopword=="stopword") %>%
+#   select(ORT, labels, T1, T2, times_rel) %>%
+#   group_by(labels) %>%
+#   filter(!find_outliers(T1, T2, keep = 0.95)) 
+
+ggplot(vowel_midpoints_speaker) +
+  aes(x = T2, y = T1, label = labels, col = labels) +
+  geom_text() +
+  # scale_y_reverse(breaks = seq(from=0, to=9, by=1), minor_breaks = NULL) + 
+  # scale_x_reverse(breaks = seq(from=3, to=14, by=1), minor_breaks = NULL) + 
+  scale_y_reverse() +
+  scale_x_reverse() +
+  labs(x = "F2", y = "F1") +
+  facet_wrap(~ labels)
+```
+
+
+## Plot with Sozialdaten
+
+## Trajectories, mit Alter
+```{r}
+td_vowels_norm %>%
+  filter(stopword == "content word") %>%
+  # filter time range
+  filter(times_norm >= 0.10 & times_norm <= 0.9) %>%
+  # filter plausible formant values
+  #filter(T1 <= 8 & T1 >= 4) %>%
+  #filter(T2 >= 9) %>%
+  ggplot(aes(x = times_norm)) +
+  geom_smooth(aes(y = T1), method = "gam", se = FALSE, colour = "#A7473A") +
+  geom_smooth(aes(y = T2), method = "gam", se = FALSE, colour = "#4B5F6C") +
+  #geom_smooth(aes(y = T3), method = "gam", se = FALSE, colour = "#B09B37") +
+  facet_grid(Alter + Geschlecht ~ labels) +
+  ylab("Hz")
+```
+
+## Generic function to plot against Sozialdaten
+```{r}
+plot_sozialdaten <- function(data, social) {
+  # calculate centroid 
+  data <<- data %>%
+  group_by(Alter, Geschlecht, labels) %>%
+  mutate(T1_centroid = mean(T1), T2_centroid = mean(T2))
+  
+  ggplot(data) +
+    aes(x = T2, y = T1, label = labels, col = labels) +
+    #geom_text() +
+    #geom_density2d() +
+    geom_text(aes(x =T2_centroid, y = T1_centroid, label = labels, col = labels)) +
+    stat_ellipse() +
+    # scale_y_reverse(breaks = seq(from=0, to=9, by=1), minor_breaks = NULL) + 
+    # scale_x_reverse(breaks = seq(from=3, to=14, by=1), minor_breaks = NULL) + 
+    scale_y_reverse() +
+    scale_x_reverse() +
+    labs(x = "F2", y = "F1") +
+    facet_grid(Alter ~ {{social}} + Dialektgebiet)
+  }
+```
+
+### Plot Alter x Geschlecht
+```{r}
+plot_sozialdaten(data, data$Geschlecht)
+```
+
+### Plot for Alter
+```{r}
+plot_sozialdaten(vowel_midpoints_speaker, vowel_midpoints_speaker$Alter)
+```
+
+# Analysis of schwa
+##  Duration per speaker for ə and ˈə
+```{r}
+# bind sozialdaten again
+duration_df <- left_join(vowel_midpoints, sozialdaten) %>%
+  drop_na(Alter)
+
+ggplot(duration_df, aes(x=Alter, y=duration)) + 
+  geom_violin() + 
+  geom_jitter(shape=16, position=position_jitter(0.2)) +
+  stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red") +
+  facet_wrap(Geschlecht ~ labels)
+
+```
+## Regression for duration
+
+```{r}
+library(lme4)
+
+lm <- lm(duration ~ labels*Alter, data = vowel_midpoints)
+summary(lm)
+```
+
+## Calculate Euclidean distance per speaker for ə and ˈə
+```{r}
+euclid_df <- vowel_midpoints_speaker %>%
+  #mutate(labels = if_else(labels == "ə", "schwa", "stressed_schwa")) %>%
+  select(labels, id, T1, T2) %>%
+  pivot_wider(names_from = labels, values_from = c(T1, T2))
+%>%
+  na.omit() %>%
+  mutate(euclidean = eucl_dist(T1_stressed_schwa, T1_schwa, T2_stressed_schwa, T2_schwa))
+
+# bind sozialdaten again
+euclid_df <- left_join(euclid_df, sozialdaten)
+```
+
+## Plot Euclidian distances per age
+
+```{r}
+ggplot(euclid_df %>% filter(Alter != ""), aes(x= Alter, y = euclidean)) +
+  # fun = "mean" applies the mean function to the values of euclidean
+#  geom_bar(stat = "summary", fun = "mean") +
+  geom_boxplot()
+```
+## Plot Euclidian distances per Geschlecht
+
+```{r}
+ggplot(euclid_df %>% filter(Geschlecht != ""), aes(x= Geschlecht, y = euclidean)) +
+  geom_boxplot()
+```
+
+## Plot Euclidian distances per Dialektgebiet
+
+```{r}
+ggplot(euclid_df %>% filter(Dialektgebiet != ""), aes(x= Dialektgebiet, y = euclidean)) +
+  geom_boxplot()
+```
+
+## Regression
+
+```{r}
+library(lme4)
+
+euclid_df <- euclid_df %>%
+  mutate(id = as.integer(id)) %>%
+  drop_na(id) %>%
+  filter(euclidean <= 2 | Dialektgebiet =="") 
+  # when working with Alter als ordered factor
+  # https://stackoverflow.com/questions/25735636/interpretation-of-ordered-and-non-ordered-factors-vs-numerical-predictors-in-m
+  # mutate(Alter = factor(Alter, levels = c("≤ 24", "25 bis 34", "35 bis 44", "45 bis 54", "55 bis 64", "65+"), ordered = TRUE))
+
+#rio::export(euclid_df, "euclid_df.csv")
+
+lm <- lm(euclidean ~ Alter * Geschlecht, data = euclid_df)
+summary(lm)
+```
+
+If only the Intercept is significant, this means that the predictors chosen have no influence on the dependent variable.
+
+
+## Random forest
+
+```{r}
+set.seed(159)
+
+euclid_split <- initial_split(euclid_df, 
+                                prop = 3/4)
+# extract training and testing sets
+euclid_train <- training(euclid_split)
+euclid_test <- testing(euclid_split)
+
+# create CV object from training data
+euclid_cv <- vfold_cv(euclid_train)
+
+# define the recipe
+euclid_recipe <- 
+  # which consists of the formula (outcome ~ predictors)
+  recipe(euclidean ~ Alter + Geschlecht + Dialektgebiet, 
+         data = euclid_df) %>%
+  # and some pre-processing steps
+  step_normalize(all_numeric()) %>%
+  step_impute_knn(all_predictors())
+
+euclid_train_preprocessed <- euclid_recipe %>%
+  # apply the recipe to the training data
+  prep(euclid_train) %>%
+  # extract the pre-processed training dataset
+  juice()
+
+# baseline model
+# you want to train a very simple baseline model and see if a more complex model
+# improves prediction accuracy.
+# you need to do this on the preprocessed training data, and then evaluate it
+# on the testing data
+
+baseline_lm <- lm(euclidean ~ Alter + Geschlecht + Dialektgebiet, 
+         data = euclid_train_preprocessed)
+
+# use the model to predict on the testing set
+predictions <- predict.lm(baseline_lm, euclid_test) %>%
+  bind_cols(preds = ., euclid_test) 
+#predict.lm creates a vector of predictions. I add this as a column to the data set
+
+# now compute rmse on the baseline model
+yardstick::rmse(predictions, truth = euclidean, estimate = preds)
+
+# now you can compare to the random forest below
+
+rf_model <- 
+  # specify that the model is a random forest
+  rand_forest() %>%
+  # specify that the `mtry` parameter needs to be tuned
+  set_args(mtry = tune(), tree=tune()) %>%
+  # select the engine/package that underlies the model
+  set_engine("ranger", importance = "impurity") %>%
+  # choose either the continuous regression or binary classification mode
+  set_mode("regression") 
+
+# set the workflow
+rf_workflow <- workflow() %>%
+  # add the recipe
+  add_recipe(euclid_recipe) %>%
+  # add the model
+  add_model(rf_model)
+
+# specify which values eant to try
+rf_grid <- expand.grid(mtry = c(3, 4, 5))
+# extract results
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = euclid_cv, #CV object
+            grid = rf_grid, # grid of values to try
+            #metrics = metric_set(accuracy, roc_auc) # this is wrong, this is used for classification, not regression
+            metrics = metric_set(rmse) #
+            )
+
+# explainability
+explain_rf <- DALEX::explain(model = rf_tune_results,  
+                          data = euclid_df,
+                             y = euclid_df$euclidean, 
+                         label = "Random Forest")
+
+
+
+# importance
+final_model <- fit(rf_workflow, euclid_df)
+
+ranger_obj <- pull_workflow_fit(final_model)$fit
+ranger_obj
+ranger_obj$variable.importance
+
+```
+
+## Pillai distance between clouds for ˈə and ə
+
+Range 0 to 1. A low Pillai score indicates that the two clouds are merged.
+
+```{r}
+# calculate the Pillai score
+vowel_midpoints %>%
+  select(labels, T1, T2, T3, Alter) %>%
+  group_by(Alter) %>%
+  mutate(pillai = pillai(cbind(T1, T2, T3) ~ labels))
+```
+

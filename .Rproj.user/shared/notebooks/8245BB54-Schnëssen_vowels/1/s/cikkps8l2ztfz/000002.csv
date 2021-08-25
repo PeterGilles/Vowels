@@ -1,0 +1,6 @@
+"0","# function calls for short, long vowels and diphthongs 
+td_vowels_norm_shortVowels <- get_segments(query = ""shortVowels"", max_dur = 200, min_dur = 50)
+"
+"2","Fehler in query(db, query = paste0(""MAU == "", query)) : 
+  Objekt 'db' nicht gefunden
+"
