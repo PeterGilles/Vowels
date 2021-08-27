@@ -320,7 +320,7 @@ td_vowels_norm
 }
 
 # function calls for short, long vowels and diphthongs 
-td_vowels_norm_shortVowels <- get_segments(query = "shortVowels", max_dur = 200, min_dur = 50)
+td_vowels_norm_shortVowels <- get_segments(query = "shortVowels", max_dur = 200, min_dur = 40)
 td_vowels_norm_longVowels <- get_segments(query = "longVowels", max_dur = 350, min_dur = 80)
 td_vowels_norm_diphthongs <- get_segments(query = "diphthongs", max_dur = 350, min_dur = 80)
 
@@ -348,9 +348,6 @@ td_vowels_norm <- bind_rows(td_vowels_norm_longVowels, td_vowels_norm_shortVowel
 # save normalised df with all vowels
 saveRDS(td_vowels_norm, "td_vowels_norm.RDS")
 
-# read entire  normalised df
-#td_vowels_norm <- readRDS("td_vowels_norm.RDS")
-
 # check what is inside
 td_vowels_norm %>%
   # to get only one row per segment
@@ -361,6 +358,9 @@ td_vowels_norm %>%
 
 ## Get vowel data for monophthong analysis
 ```{r}
+# read entire  normalised df
+#td_vowels_norm <- readRDS("td_vowels_norm.RDS")
+
 # function to get formants for specific point in time ('times_norm')
 get_formants <- function(data, time, segments){
   
@@ -693,6 +693,7 @@ summary(regression)
 ```
 
 ## GAMMs
+
 https://nzilbb.github.io/Covariation_monophthongs_NZE/Covariation_monophthongs_analysis.html#GAMM_modelling
 ```{r}
 vowels_all <- formants_all %>%
@@ -716,8 +717,18 @@ vowels_all <- vowels_all %>%
   arrange(as.character(Speaker))
 
 vowels_all <- vowels_all %>%
-  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) 
+  select(Speaker, Gender, participant_year_of_birth, Word, Vowel, F1_lobanov_2.0, F2_lobanov_2.0) %>%
+  filter(Vowel %in% c("aː", "æ", "ɑ")) 
 
+# speakers having ALL required vowels
+vowels_all <- vowels_all %>% 
+  group_by(Speaker) %>% 
+  mutate(tokens_per_speaker = n()) %>%
+  ungroup() %>%
+  group_by(Speaker, Vowel) %>% 
+  mutate(vowels_per_speaker = n()) %>%
+  filter(tokens_per_speaker >= 20) %>%
+  ungroup()
 ```
 
 ```{r}
@@ -738,8 +749,8 @@ for (i in levels(factor(vowels_all$Vowel))) {
   
   #run the mixed-effects model on the vowel, i.e. if i = FLEECE this will model F1 for FLEECE
   gam.F1 <- bam(F1_lobanov_2.0 ~
-                  s(participant_year_of_birth, k=10, bs="ad", by=Gender) +
-                  s(participant_year_of_birth, k=10, bs="ad") +
+                  s(participant_year_of_birth, k=5, bs="cr", by=Gender) +
+                  s(participant_year_of_birth, k=5, bs="cr") +
                   Gender +
                   #s(Speech_rate) +
                   s(Speaker, bs="re") +
@@ -762,8 +773,8 @@ for (i in levels(factor(vowels_all$Vowel))) {
   
   #run the mixed-effects model on the vowel, i.e. if i = FLEECE this will model F2 for FLEECE
   gam.F2 <- bam(F2_lobanov_2.0 ~
-                  s(participant_year_of_birth, k=10, bs="ad", by=Gender) +
-                  s(participant_year_of_birth, k=10, bs="ad") +
+                  s(participant_year_of_birth, k=5, bs="cr", by=Gender) +
+                  s(participant_year_of_birth, k=5, bs="cr") +
                   Gender +
                   #s(Speech_rate) +
                   s(Speaker, bs="re") +
@@ -794,6 +805,405 @@ for (i in levels(factor(vowels_all$Vowel))) {
 write.csv(gam_intercepts.tmp, "gam_intercepts_tmp_new.csv", row.names = FALSE)
 ```
 
+```{r}
+vowels_to_plot <- c("ɑ", "aː", "æ")
+
+pred_table <- function (Vowel) {
+  mod_name <- paste0("gam_F1_", Vowel)
+  return(cbind(Vowel, 
+               plot_smooth(get(mod_name), view="participant_year_of_birth", 
+                           rm.ranef=T, rug=F, n.grid=500)$fv)
+  )
+}
+
+gamm_preds_to_plot <- lapply(vowels_to_plot, pred_table) %>%
+  do.call(rbind, .) %>%
+  mutate(participant_year_of_birth = as.integer(participant_year_of_birth))
+
+saveRDS(gamm_preds_to_plot, "gamm_preds_to_plot.rds")
+```
+
+```{r}
+#make a long version of the intercepts
+gam_intercepts.tmp_long <- gam_intercepts.tmp %>%
+  pivot_longer(F1_aː:F2_ɑ, names_to = "Vowel_formant", values_to = "Intercept") %>%
+  mutate(Formant = substr(Vowel_formant, 1, 2),
+         Vowel = substr(Vowel_formant, 4, max(nchar(Vowel_formant)))) %>%
+  left_join(vowels_all %>%
+    select(Speaker, participant_year_of_birth) %>% distinct()) %>%
+  left_join(gamm_preds_to_plot %>% 
+              mutate(Formant = "F1") %>% 
+  select(participant_year_of_birth, Vowel, Formant, fit, ll, ul))
+
+speakers1 <- gam_intercepts.tmp_long %>%
+  filter(Vowel_formant %in% c("F1_aː", "F1_æ", "F1_ɑ")) %>%
+  ungroup() %>%
+  arrange(participant_year_of_birth) %>%
+  filter(Speaker %in% c("1000", "1630", "421", "1004")) %>%
+  mutate(letters = c(rep("A", 3), rep("B", 3), rep("C", 3), rep("D", 3)),
+         speakers1 = paste0(letters, " (", round(Intercept, 2), ")"))
+
+F1_speaker_intercepts <- gam_intercepts.tmp_long %>%
+  filter(Vowel_formant %in% c("F1_aː", "F1_æ", "F1_ɑ"),
+         Formant == "F1") %>% #choose the vowels
+  mutate(Vowel = factor(Vowel, levels = c("aː", "æ", "ɑ"))) %>% #order the vowels
+  ggplot(aes(x = participant_year_of_birth, y = fit, colour = Vowel, fill = Vowel)) +
+  geom_point(aes(x = participant_year_of_birth, y = fit + Intercept), size = 1, alpha = 0.2) +
+  geom_line() +
+  geom_ribbon(aes(ymin=ll, ymax=ul), colour = NA, alpha=0.2) +
+  #geom_point(data = speakers1 %>% mutate(fit = ifelse(speakers1 %in% c("D (-0.36)"), fit - 0.05, fit)), aes(x = participant_year_of_birth, y = fit + Intercept), size = 4) +
+  #geom_label(data = speakers1 %>% mutate(fit = ifelse(speakers1 %in% c("B (0.23)"), fit - 0.1, fit), fit = ifelse(speakers1 %in% c("D (-0.36)"), fit - 0.1, fit)), aes(x = participant_year_of_birth - 1, y = fit + Intercept, label = speakers1), fill = "white", alpha = 0.5, hjust = 1, show.legend = FALSE) +
+  scale_y_reverse() +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9", "#009E73")) +
+  scale_fill_manual(values=c("#E69F00", "#56B4E9", "#009E73")) +
+  xlab("Participant year of birth") + #x axis title
+  ylab("Normalised F1 (Lobanov 2.0)") + #y axis title
+  theme_bw() + #general aesthetics
+  theme(legend.position = c(0.8, 0.1), #legend position
+        legend.direction = "horizontal",
+        legend.background = element_rect(colour = "black"),
+        axis.text = element_text(size = 14), #text size
+        axis.title = element_text(face = "bold", size = 14), #axis text aesthetics
+        legend.title = element_blank(), #legend title text size
+        legend.text = element_text(size = 14)) #legend text size
+ 
+F1_speaker_intercepts
+
+ggsave(plot = F1_speaker_intercepts, filename = "F1_speaker_intercepts.png", width = 10, height = 5, dpi = 400)
+```
+
+
+## Visualisation of intercept correlations
+
+```{r}
+gam_intercepts.tmp %>%
+  select(-1) %>%
+  pivot_longer(cols = 1:6, names_to = "variable", values_to = "intercept") %>%
+  ggplot(aes(x = intercept, y = ..density..)) +
+  geom_histogram(bins = 500) +
+  geom_density(outline.type = "upper", colour = "red", bw = "SJ") +
+  facet_wrap(~variable) +
+  theme_bw()
+```
+
+## Heat map of correlations
+
+```{r}
+cors <- function(df) { 
+   # turn all three matrices (r, n, and P into a data frame)
+   M <- Hmisc::rcorr(as.matrix(df))
+   # return the three data frames in a list return(Mdf)
+   Mdf <- map(M, ~data.frame(.x))
+}
+
+formatted_cors <- function(df){
+ cors(df) %>%
+ map(~rownames_to_column(.x, var="measure1")) %>%
+ map(~pivot_longer(.x, -measure1, "measure2")) %>% 
+ bind_rows(.id = "id") %>%
+ pivot_wider(names_from = id, values_from = value) %>%
+ mutate(sig_p = ifelse(P < .05, T, F), p_if_sig = ifelse(P <.05, P, NA), r_if_sig = ifelse(P <.05, r, NA))
+}
+
+formatted_cors(gam_intercepts.tmp[-1]) %>%
+ ggplot(aes(x = measure1, y = measure2, fill = r, label=round(r_if_sig,2))) +
+ geom_tile() +
+ geom_text(aes(size = abs(r_if_sig)), show.legend = FALSE) +
+ labs(x = NULL, y = NULL, fill = "Pearson's Correlation") +
+ # map a red, white and blue color scale to correspond to -1:1 sequential gradient
+ scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
+ theme_classic() +
+ # remove excess space on x and y axes
+ scale_x_discrete(expand=c(0,0)) +
+ scale_y_discrete(expand=c(0,0)) +
+ # change global font to roboto
+ theme(axis.text = element_text(size = 20, face = "bold"),
+       axis.text.x = element_text(angle = 90, hjust = 1),
+       legend.position = "top",
+       legend.key.width = unit(2, "cm"),
+       legend.title = element_text(size = 20),
+       legend.text = element_text(size = 20)) +
+  guides(fill = guide_colourbar(title.position = "top"))
+```
+
+## Principal Components Analysis (PCA)
+
+```{r}
+library(factoextra)
+#run the PCA on the intercepts data frame, note the intercepts are in columns 2:21 as column 1 is the speaker name
+intercepts.pca <- princomp(gam_intercepts.tmp[, 2:ncol(gam_intercepts.tmp)],cor=TRUE)
+
+#print a summary of the PCA, this will give the variance explained by each PC
+summary(intercepts.pca)
+```
+
+```{r}
+#view eigen values, this will visualise the variance explained by each PC
+factoextra::fviz_eig(intercepts.pca, addlabels = TRUE)
+```
+
+```{r}
+#create objects containing the loadings for each of the 3 main PCs
+PC1_loadings <- intercepts.pca$loadings[,1]
+PC2_loadings <- intercepts.pca$loadings[,2]
+PC3_loadings <- intercepts.pca$loadings[,3]
+
+#store these in a data frame for ease of plotting
+PC1_loadings <- PC1_loadings %>%
+  as.data.frame() %>%#convert to a data frame
+  dplyr::rename(Loading = 1) %>% #rename the variable
+  mutate(variable = row.names(.), #add variable to identify which intercepts are representing each row
+         highlight = ifelse(Loading > 0.225 | Loading < -0.225 , "black", "gray"), #for plotting reasons, we want to highlight the variables that contribute the most to the PC, so if the loading is > |0.2| it will plotted in black, if not it will be gray)
+         PC1_loadings_abs = abs(Loading), #make the loadings absolute so they are comparable when plotting
+         direction = ifelse(Loading < 0, "red", "black"), #define which direction the loading sign was, i.e. red if negative, black if positive
+         PC = "PC1",
+         Vowel = substr(variable, 4, 10)) %>% #add variable to identify which PC the data is from
+  arrange(PC1_loadings_abs) #order the variables based on absolute loading value
+
+#repeat this process for PC2
+PC2_loadings <- PC2_loadings %>%
+  as.data.frame() %>%
+  dplyr::rename(Loading = 1) %>%
+  mutate(variable = row.names(.),
+         highlight = ifelse(Loading > 0.225 | Loading < -0.225 , "black", "gray"),
+         PC2_loadings_abs = abs(Loading),
+         direction = ifelse(Loading < 0, "red", "black"),
+         PC = "PC2",
+         Vowel = substr(variable, 4, 10)) %>%
+  arrange(PC2_loadings_abs)
+
+#repeat this process for PC3
+PC3_loadings <- PC3_loadings %>%
+  as.data.frame() %>%
+  dplyr::rename(Loading = 1) %>%
+  mutate(variable = row.names(.),
+         highlight = ifelse(Loading > 0.225 | Loading < -0.225 , "black", "gray"),
+         PC3_loadings_abs = abs(Loading),
+         direction = ifelse(Loading < 0, "red", "black"),
+         PC = "PC3",
+         Vowel = substr(variable, 4, 10)) %>%
+  arrange(PC3_loadings_abs)
+```
+
+```{r}
+PC_loadings_contrib <- intercepts.pca$loadings[,1:3] %>% #get the loadings for PC1, PC2 and PC3
+  as.data.frame() %>%
+  cbind(get_pca(intercepts.pca, "var")$contrib[,1:3]) %>% #get the contributions
+  dplyr::rename(Loading.PC1 = Comp.1,
+         Loading.PC2 = Comp.2,
+         Loading.PC3 = Comp.3,
+         Contribution.PC1 = Dim.1,
+         Contribution.PC2 = Dim.2,
+         Contribution.PC3 = Dim.3) %>%
+  mutate(Variable = row.names(.),
+         Vowel = substr(Variable, 4, nchar(Variable))) %>%
+  dplyr::select(Variable, Vowel, Loading.PC1:Contribution.PC3) %>%
+  pivot_longer(Loading.PC1:Loading.PC3, names_to = "PC", values_to = "Loading") %>%
+  arrange(Vowel, Variable, PC) %>%
+  mutate(direction = ifelse(Loading < 0, "red", "black")) #define direction of the loadings
+```
+
+### PC1
+
+```{r}
+PC1_contrib <- PC_loadings_contrib %>%
+  select(-Contribution.PC2, -Contribution.PC3) %>%
+  filter(PC == "Loading.PC1") %>%
+  arrange(Contribution.PC1) %>%
+  mutate(Loading_abs = abs(Loading),
+         cumsum_PC1 = round(cumsum(Contribution.PC1), 4),
+         highlight = ifelse(cumsum_PC1 < 50, "grey", "black"),
+         highlight1 = ifelse(cumsum_PC1 < 50, 0.5, 1),
+         direction1 = direction,
+         direction_lab = ifelse(direction1=="red","–", "+"))
+  
+PC1_contrib_plot <- ggplot(PC1_contrib, aes(x=reorder(Variable, Contribution.PC1), y=Contribution.PC1)) + #have the variable name on the x axis and loading value on the y
+  geom_text(aes(alpha = highlight, label=ifelse(PC1_contrib$direction=="red","–", "+")), colour = PC1_contrib$direction, size = 6, fontface="bold", show.legend = FALSE) + 
+  xlab("") + #remove the x axis title
+  ylab("PC1 contribution (%)") +
+  geom_vline(xintercept = 16.5, color = "red", linetype = "dashed") + #add a red dashed line to identify the 0.2 cut off
+  scale_alpha_manual(values=c(1, 0.3)) +
+  theme_bw() + #set the aesthetics of the plot
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, colour = PC1_contrib$highlight, size = 14, face = "bold"),
+        axis.text.y = element_text(size = 14, face = "bold"),
+        axis.title = element_text(size = 14, face = "bold")) #modify the x axis variable names so they are rotated and highlighted
+
+PC1_contrib_plot
+```
+
+
+## Visualisation by GAMM smooth
+
+### Sound change by year
+```{r}
+#make vector containing all .rds filenames from model_summaries folder
+model_summary_files = list.files(pattern="*.rds", path = "model_summaries")
+
+#create a dummy data frame to store the values from plot_smooth
+mod_pred_yob_values <- data.frame(plot_smooth(gam_F1_aː, view="participant_year_of_birth", rm.ranef=T)$fv) %>%
+   mutate(model1 = "gam_F1_aː1") %>%
+  filter(model1 != "gam_F1_aː1")
+
+#load each of the files with for loop
+for (i in model_summary_files) {
+  
+  #remove .rds from model name and then print the model name
+  mod1 <- gsub(".rds", "", i)
+  print(mod1)
+  
+  #generate a plot smooth of the model giving the participant year of birth smooth
+  plot1 <- plot_smooth(get(mod1), view="participant_year_of_birth", rm.ranef = T, n.grid = 119, main = mod1)
+
+  #extract the values from the plot and reformat for ggplot
+  plot1 <- plot1$fv %>%
+    mutate(Vowel = substr(mod1, 8, nchar(mod1)),
+           Formant = substr(mod1, 5, 6))
+  
+  #combine the data to the previous rows, so that all models are in a single data frame
+  mod_pred_yob_values <<- rbind(mod_pred_yob_values, plot1) %>%
+    mutate(participant_year_of_birth = as.integer(participant_year_of_birth))
+  
+}
+
+saveRDS(mod_pred_yob_values, "Models/mod_pred_yob_values.rds")
+```
+
+```{r}
+#make a long version of the intercepts
+gam_intercepts.tmp_long <- gam_intercepts.tmp %>%
+  pivot_longer(F1_aː:F2_ɑ, names_to = "Vowel_formant", values_to = "Intercept") %>%
+  mutate(Formant = substr(Vowel_formant, 1, 2),
+         Vowel = substr(Vowel_formant, 4, max(nchar(Vowel_formant)))) %>%
+  left_join(vowels_all %>%
+    select(Speaker, participant_year_of_birth, Gender) %>% distinct()) %>%
+  left_join(mod_pred_yob_values %>% select(participant_year_of_birth, Vowel, Formant, fit, ll, ul))
+
+#plot the gam smooths predicting F1/F2 per vowel and add the speaker intercepts values
+sound_change_plot_smooth <- mod_pred_yob_values %>%
+  mutate(Formant = factor(Formant, levels = c("F2", "F1")))  %>%
+  ggplot(aes(x = participant_year_of_birth, y = fit, colour = Formant, fill = Formant)) +
+  geom_jitter(data = gam_intercepts.tmp_long %>% mutate(Formant = factor(Formant, levels = c("F2", "F1"))), aes(x = participant_year_of_birth, y = fit + Intercept), size = 0.25, alpha = 0.1) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = ll, ymax = ul), alpha = 0.2, colour = NA) +
+  scale_x_continuous(breaks = c(1900, 1950)) +
+  xlab("Year of birth") +
+  ylab("Predicted model fit (Lobanov 2.0)") +
+  facet_grid(Formant~Vowel) +
+  theme_bw() +
+  theme(legend.position = "none", axis.text = element_text(size = 12), axis.title = element_text(size = 14, face = "bold"), strip.text = element_text(size = 12, face = "bold"))
+
+sound_change_plot_smooth
+```
+
+### Sound change by year + gender
+
+```{r}
+#create a dummy data frame to store the values from plot_smooth
+mod_pred_yobgender_values <- data.frame(plot_smooth(gam_F1_aː, view="participant_year_of_birth", rm.ranef=T)$fv) %>%
+   mutate(model1 = "gam_F1_aː1") %>%
+  filter(model1 != "gam_F1_aː1")
+
+#load each of the files with for loop
+for (i in model_summary_files) {
+
+  #remove .rds from model name and then print the model name
+  mod1 <- gsub(".rds", "", i)
+  print(mod1)
+
+  #generate a plot smooth of the model giving the participant year of birth*gender interaction smooth
+  plot1 <- plot_smooth(get(mod1), view="participant_year_of_birth", plot_all = "Gender", n.grid = 119, rm.ranef = T, main = mod1)
+
+  #extract the values from the plot and reformat for ggplot
+  plot1 <- plot1$fv %>%
+    mutate(Vowel = substr(mod1, 8, nchar(mod1)),
+           Formant = substr(mod1, 5, 6))
+
+  #combine the data to the previous rows, so that all models are in a single data frame
+  mod_pred_yobgender_values <<- rbind(mod_pred_yobgender_values, plot1)
+
+}
+
+```
+
+```{r}
+
+mod_pred_yobgender_values <- readRDS("Models/mod_pred_yobgender_values.rds")
+
+#plot the gam smooths predicting F1/F2 per vowel and add the per speaker mean values with F or M as the text
+sound_change_plot_smooth_gender <- mod_pred_yobgender_values %>%
+  mutate(Formant = factor(Formant, levels = c("F2", "F1"))) %>%
+  ggplot(aes(x = participant_year_of_birth, y = fit, colour = Formant, linetype = Gender, label = Gender, fill = Formant)) +
+  geom_text(data = gam_intercepts.tmp_long %>%
+  mutate(Formant = factor(Formant, levels = c("F2", "F1"))), aes(x = participant_year_of_birth, y = fit + Intercept), size = 1, alpha = 0.5) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = ll, ymax = ul), alpha = 0.2, colour = NA) +
+  scale_x_continuous(breaks = c(1900, 1950)) +
+  xlab("Year of birth") +
+  ylab("Predicted model fit (Lobanov 2.0)") +
+  facet_grid(Formant~Vowel) +
+  theme_bw() +
+  theme(legend.position = "top", axis.text = element_text(size = 12), axis.title = element_text(size = 14, face = "bold"), strip.text = element_text(size = 12, face = "bold")) +
+  guides(linetype=guide_legend(override.aes=list(fill=NA)))
+
+sound_change_plot_smooth_gender
+
+ggsave(plot = sound_change_plot_smooth_gender, filename = "Figures/sound_change_gam_gender.png", width = 10, height = 5, dpi = 600)
+```
+
+### Visualisation in F1/F2 space
+
+```{r fig.width=4, fig.height=4}
+#transform data so there are separate columns for F1 and F2
+sound_change_plot_data <- mod_pred_yob_values %>%
+  select(participant_year_of_birth, fit, Vowel, Formant) %>%
+  pivot_wider(names_from = Formant, values_from = fit) #transform the data to wide format so there are separate F1 and F2 variables
+
+#make data frame to plot starting point, this will give the vowel labels based on the smallest year of birth coordinates
+sound_change_labels1 <- sound_change_plot_data %>%
+  group_by(Vowel) %>%
+  filter(participant_year_of_birth == min(participant_year_of_birth))
+
+#make data frame to plot end point, this will give the arrow at the end of the paths based on the largest year of birth coordinates
+sound_change_labels2 <- sound_change_plot_data %>%
+  group_by(Vowel) %>%
+  top_n(wt = participant_year_of_birth, n = 2)
+
+#plot
+sound_change_plot <- sound_change_plot_data %>%
+  #set general aesthetics
+  ggplot(aes(x = F2, y = F1, colour = Vowel, alpha = participant_year_of_birth, group = Vowel)) +
+  #add year of birth change trajectories
+  geom_path(size = 0.5, show.legend = FALSE) 
++
+  #add end points (this gives the arrows)
+  geom_path(data = sound_change_labels2, aes(x = F2, y = F1, colour = Vowel, group = Vowel),
+            arrow = arrow(ends = "last", type = "closed", length = unit(0.2, "cm")),
+            inherit.aes = FALSE, show.legend = FALSE) +
+  #plot the vowel labels
+  geom_text(data = sound_change_labels1, aes(x = F2, y = F1, colour = Vowel, group = Vowel, label = Vowel), inherit.aes = FALSE, show.legend = FALSE) +
+  #label the axes
+  xlab("F2 (normalised)") +
+  ylab("F1 (normalised)") +
+  #scale the size so the path is not too wide
+  scale_size_continuous(range = c(0.2,1)) +
+  #reverse the axes to follow conventional vowel plotting
+  scale_x_reverse(limits = c(2,-2), position = "top") +
+  scale_y_reverse(limits = c(2.3,-2), position = "right") +
+  #set the colours
+  #scale_color_manual(values = c("#9590FF", "#D89000", "#A3A500", "#39B600", "#00BF7D",
+  #                               "#00BFC4", "#00B0F6", "#F8766D", "#E76BF3", "#FF62BC")) +
+  scale_color_manual(values = c("#9590FF", "#D89000", "#A3A500")) +  #add a title
+  # labs(title = "A) Change over time\n     ") +
+  #set the theme
+  theme_bw() +
+  #make title bold
+  theme(plot.title = element_text(face="bold"))
+
+sound_change_plot
+
+ggsave(plot = sound_change_plot, filename = "Figures/sound_change_static.png", width = 5.5, height = 5.5, dpi = 300)
+
+```
 
 ## Pillai distance between vowel clouds 
 
